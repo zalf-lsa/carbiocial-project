@@ -29,7 +29,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <map>
 //#include <set>
 
-#include "monica-parameters.h"
+#include "core/monica-parameters.h"
 #include "soil/soil.h"
 
 namespace Carbiocial
@@ -41,23 +41,15 @@ namespace Carbiocial
 	class CarbiocialConfiguration
 	{
 	public:
-		CarbiocialConfiguration() : 
-			create2013To2040ClimateData(false),
-			climate_file(""),
-			ini_file(""),
-			input_path(""),
-			output_path(""),
-			row_id(0),
-			col_id(0)
-		{}
-
+		CarbiocialConfiguration() {}
 		~CarbiocialConfiguration() {}
 
-		bool create2013To2040ClimateData;
+		bool writeOutputFiles{false};
+		bool create2013To2040ClimateData{false};
 		std::string pathToClimateDataReorderingFile;
 
 		std::string getClimateFile() const  { return climate_file; }
-		std::string getIniFile() const { return ini_file; }
+		std::string getPathToIniFile() const { return pathToIniFile; }
 		std::string getInputPath() const { return input_path; }
 		std::string getOutputPath() const { return output_path; }
 		Tools::Date getStartDate() const { return start_date; }
@@ -69,7 +61,8 @@ namespace Carbiocial
 		int getProfileId() const { return profileId; }
 
 		void setClimateFile(std::string climate_file) { this->climate_file = climate_file; }
-		void setIniFile(std::string ini_file) { this->ini_file = ini_file; }
+		//void setIniFile(std::string ini_file) { this->ini_file = ini_file; }
+		void setPathToIniFile(std::string pathToIniFile) { this->pathToIniFile = pathToIniFile; }
 		void setInputPath(std::string path) { this->input_path = path; }
 		void setOutputPath(std::string path) { this->output_path = path; }
 		void setStartDate(std::string date) { this->start_date = Tools::fromMysqlString(date.c_str()); }
@@ -82,16 +75,17 @@ namespace Carbiocial
 
 	private:
 		std::string climate_file;
-		std::string ini_file;
+		//std::string ini_file;
+		std::string pathToIniFile;
 		std::string input_path;
 		std::string output_path;
 		Tools::Date start_date;
 		Tools::Date end_date;
-		int row_id;
-		int col_id;
-		double latitude;
-		double elevation;
-		int profileId;
+		int row_id{0};
+		int col_id{0};
+		double latitude{-9.41};
+		double elevation{300.0};
+		int profileId{-1};
 	};
 
 	std::map<int, double> runCarbiocialSimulation(const CarbiocialConfiguration* simulation_config = 0);

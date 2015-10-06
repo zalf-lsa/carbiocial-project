@@ -30,6 +30,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <utility>
 #include <cassert>
 #include <mutex>
+#include <ctime>
+#include <cstdlib>
 
 #include "db/abstract-db-connections.h"
 #include "climate/climate-common.h"
@@ -38,9 +40,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "carbiocial.h"
 #include "tools/debug.h"
-#include "monica-parameters.h"
+#include "core/monica-parameters.h"
 #include "soil/conversion.h"
-#include "simulation.h"
+#include "core/simulation.h"
+#include "io/database-io.h"
+#include "io/hermes-file-io.h"
+#include "run/production-process.h"
 
 using namespace Db;
 using namespace std;
@@ -131,9 +136,9 @@ int maxDepthCm, GeneralParameters gps, string output_path, CentralParameterProvi
 				p.set_vs_SoilRawDensity(satof(row[11]));
 				p.vs_SoilSandContent = satof(row[7]) / 100.0;
 				p.vs_SoilClayContent = satof(row[6]) / 100.0;
-				p.vs_SoilTexture = texture2KA5(p.vs_SoilSandContent, p.vs_SoilClayContent);
+				p.vs_SoilTexture = sandAndClay2KA5texture(p.vs_SoilSandContent, p.vs_SoilClayContent);
 				p.vs_SoilStoneContent = 0.0;
-        p.vs_Lambda = Soil::texture2lambda(p.vs_SoilSandContent, p.vs_SoilClayContent);
+        p.vs_Lambda = sandAndClay2lambda(p.vs_SoilSandContent, p.vs_SoilClayContent);
 
 				// initialization of saturation, field capacity and perm. wilting point
 				soilCharacteristicsKA5(p);
@@ -202,15 +207,11 @@ int maxDepthCm, GeneralParameters gps, string output_path, CentralParameterProvi
 std::map<int, double> Carbiocial::runCarbiocialSimulation(const CarbiocialConfiguration* simulation_config)
 {
 	//std::cout << "Start Carbiocial cluster Simulation" << std::endl;
-
-	//  int phase = simulation_config->getPhase();
-	//  int step = simulation_config->getStep();
-
 	std::string input_path = simulation_config->getInputPath();
 	std::string output_path = simulation_config->getOutputPath();
 
 	// read in ini - file ------------------------------------------
-	IniParameterMap ipm(input_path + simulation_config->getIniFile());
+	IniParameterMap ipm(simulation_config->getPathToIniFile());
 
 	std::string crop_rotation_file = ipm.value("files", "croprotation");
 	std::string fertilisation_file = ipm.value("files", "fertiliser");
@@ -218,21 +219,6 @@ std::map<int, double> Carbiocial::runCarbiocialSimulation(const CarbiocialConfig
 	//std::cout << "soil_file: " << soil_file.c_str() << "\t" << ipm.value("files", "soil").c_str() << endl;
 	//std::cout << "crop_rotation_file: " << crop_rotation_file.c_str() << endl;
 	//std::cout << "fertilisation_file: " << fertilisation_file.c_str() << endl << endl;
-
-	bool use_automatic_irrigation = ipm.valueAsInt("automatic_irrigation", "activated") == 1;
-	double amount, treshold, nitrate, sulfate;
-	if (use_automatic_irrigation) {
-		amount = ipm.valueAsDouble("automatic_irrigation", "amount", 0.0);
-		treshold = ipm.valueAsDouble("automatic_irrigation", "treshold", 0.15);
-		nitrate = ipm.valueAsDouble("automatic_irrigation", "nitrate", 0.0);
-		sulfate = ipm.valueAsDouble("automatic_irrigation", "sulfate", 0.0);
-	}
-	//  std::cout << "use_automatic_irrigation: " << use_automatic_irrigation << endl;
-	//  std::cout << "amount: " << amount << endl;
-	//  std::cout << "treshold: " << treshold << endl;
-	//  std::cout << "nitrate: " << nitrate << endl;
-	//  std::cout << "sulfate: " << sulfate << endl << endl;
-
 
 	//site configuration
 	double latitude = ipm.valueAsDouble("site_parameters", "latitude", -1.0);
@@ -267,7 +253,6 @@ std::map<int, double> Carbiocial::runCarbiocialSimulation(const CarbiocialConfig
 	double init_FC = ipm.valueAsDouble("init_values", "init_percentage_FC", -1.0);
 
 	//  std::cout << "init_FC: " << init_FC << endl;
-
 	// ---------------------------------------------------------------------
 
 	CentralParameterProvider centralParameterProvider = readUserParameterFromDatabase();
@@ -289,7 +274,13 @@ std::map<int, double> Carbiocial::runCarbiocialSimulation(const CarbiocialConfig
 	double profile_depth = layer_thickness * double(centralParameterProvider.userEnvironmentParameters.p_NumberOfLayers);
 	double max_mineralisation_depth = 0.4;
 
-	GeneralParameters gps = GeneralParameters(layer_thickness, profile_depth, max_mineralisation_depth, n_response, water_deficit_response, emergence_flooding_control, emergence_moisture_control);
+	GeneralParameters gps = GeneralParameters(layer_thickness);
+	gps.ps_ProfileDepth = profile_depth;
+	gps.ps_MaxMineralisationDepth = max_mineralisation_depth;
+	gps.pc_NitrogenResponseOn = n_response;
+	gps.pc_WaterDeficitResponseOn = water_deficit_response;
+	gps.pc_EmergenceFloodingControlOn = emergence_flooding_control;
+	gps.pc_EmergenceMoistureControlOn = emergence_moisture_control;
 
 	//soil data
 	const SoilPMs* sps;
@@ -314,35 +305,43 @@ std::map<int, double> Carbiocial::runCarbiocialSimulation(const CarbiocialConfig
 	//cout << "Groundwater month:\t" << centralParameterProvider.userEnvironmentParameters.p_MinGroundwaterDepthMonth << endl;
 
 	// climate data
-	Climate::DataAccessor climateData = 
-		climateDataFromCarbiocialFiles(simulation_config->getClimateFile(), centralParameterProvider, latitude, simulation_config);
+	Climate::DataAccessor climateData = climateDataFromCarbiocialFiles(simulation_config->getClimateFile(), centralParameterProvider, 
+	latitude, simulation_config);
 	//cout << "Return from climateDataFromMacsurFiles" << endl;
 
 	// fruchtfolge
-	std::string file = input_path + crop_rotation_file;
-	vector<ProductionProcess> ff = cropRotationFromHermesFile(file);
+	vector<ProductionProcess> ff = cropRotationFromHermesFile(input_path + crop_rotation_file);
 	//cout << "Return from cropRotationFromHermesFile" << endl;
+	
 	// fertilisation
-	file = input_path + fertilisation_file;
-	attachFertiliserApplicationsToCropRotation(ff, file);
+	attachFertiliserApplicationsToCropRotation(ff, input_path + fertilisation_file);
 	//cout << "Return from attachFertiliserApplicationsToCropRotation" << endl;
-	//  BOOST_FOREACH(const ProductionProcess& pv, ff){
+	//  for(const ProductionProcess& pv : ff)
 	//    cout << "pv: " << pv.toString() << endl;
-	//  }
-
-
+	
 	//build up the monica environment
 	Env env(sps, centralParameterProvider);
 	env.general = gps;
 	env.pathToOutputDir = output_path;
-	env.setMode(Env::MODE_CARBIOCIAL_CLUSTER);
+	env.setMode(MODE_CARBIOCIAL_CLUSTER);
 	env.site = siteParams;
+	env.writeOutputFiles = simulation_config->writeOutputFiles;
 
 	env.da = climateData;
 	env.cropRotation = ff;
 
-	if (use_automatic_irrigation) 
+	if (ipm.valueAsInt("automatic_irrigation", "activated") == 1) 
 	{
+		double amount = ipm.valueAsDouble("automatic_irrigation", "amount", 0.0);
+		double treshold = ipm.valueAsDouble("automatic_irrigation", "treshold", 0.15);
+		double nitrate = ipm.valueAsDouble("automatic_irrigation", "nitrate", 0.0);
+		double sulfate = ipm.valueAsDouble("automatic_irrigation", "sulfate", 0.0);
+		//  std::cout << "use_automatic_irrigation: " << use_automatic_irrigation << endl;
+		//  std::cout << "amount: " << amount << endl;
+		//  std::cout << "treshold: " << treshold << endl;
+		//  std::cout << "nitrate: " << nitrate << endl;
+		//  std::cout << "sulfate: " << sulfate << endl << endl;
+
 		env.useAutomaticIrrigation = true;
 		env.autoIrrigationParams = AutomaticIrrigationParameters(amount, treshold, nitrate, sulfate);
 	}
@@ -434,6 +433,8 @@ Climate::DataAccessor Carbiocial::climateDataFromCarbiocialFiles(const std::stri
 			continue;
 
 		vector<string> r = splitString(s, ",");
+		if(r.size() < 11)
+			continue;
 
 		unsigned int day = satoi(r.at(0));
 		unsigned int month = satoi(r.at(1));
@@ -466,12 +467,15 @@ Climate::DataAccessor Carbiocial::climateDataFromCarbiocialFiles(const std::stri
 		d.push_back(satof(r.at(9)));
 		d.push_back(satof(r.at(10)));
 
-		//    cout << "[" << day << "." << month << "." << year << "] ";
+		//cout << "[" << day << "." << month << "." << year << "] -> [";
+		//for(auto v : d)
+		//	cout << v << " ";
+		//cout << "]" << endl;
 
 		data[year][month][day] = d;
 	}
 	
-	//  cout << endl;
+	cout << endl;
 
 	vector<double> tavgs, tmins, tmaxs, precips, globrads, relhumids, winds;
 
@@ -496,6 +500,35 @@ Climate::DataAccessor Carbiocial::climateDataFromCarbiocialFiles(const std::stri
 	
 		auto v = data[year][month][day];
 
+		//cout << "[" << day << "." << month << "." << year << "] -> [";
+		//for(auto vv : v)
+		//	cout << vv << " ";
+		//cout << "]" << endl;
+		
+		if(v.size() < 7)
+    {
+			cerr << "Error: no, or too few, climate elements at date [dd.mm.yyyy]: "
+				<< day << "." << month << "." << year << " available." << endl;
+			
+			cerr << "[" << day << "." << month << "." << year << "] -> [";
+			for(auto vv : v)
+				cerr << vv << " ";
+			cerr << "]" << endl;
+			
+			Date pd(d);
+			pd--;
+			
+			if(pd < startDate)
+			{
+				cout << "Stopping." << endl;
+				exit(1);
+			}
+			else
+				cout << "Continuing, but using data from previous day!" << endl;
+			
+      v = data[pd.year()][pd.month()][pd.day()];
+		}
+		
 		tavgs.push_back(v.at(0));
 		tmins.push_back(v.at(1));
 		tmaxs.push_back(v.at(2));
@@ -525,4 +558,189 @@ Climate::DataAccessor Carbiocial::climateDataFromCarbiocialFiles(const std::stri
 	return da;
 }
 
+int main(int argc, char** argv)
+{
+	setlocale(LC_ALL, "");
+	setlocale(LC_NUMERIC, "C");
 
+	//use the non-default db-conections-core.ini
+	dbConnectionParameters("db-connections.ini");
+
+	CarbiocialConfiguration cc;
+  	
+	bool activateDebugOutput = true; bool activateDebugOutputSet = false;
+	bool writeOutputFiles = false; bool writeOutputFilesSet = false;
+	
+	int row = 0; //bool rowSet = false;
+	int col = 0; //bool colSet = false;
+	int profileId = 1; bool profileIdSet = false;
+
+	string startDate = "1981-01-01"; bool startDateSet = false;
+	string endDate = "2012-12-31"; bool endDateSet = false;
+
+	string pathToIniFile = "../carbiocial-project/monica/run-local-example-inputs/maize.ini"; 
+
+	string pathToClimateDataFile = string("/media/archiv/md/berg/carbiocial/climate-data-years-1981-2012-rows-0-2544/") + "row-" + to_string(row) + "/col-" + to_string(col) + ".asc"; bool pathToClimateDataFileSet = false;
+	string pathToClimateDataReorderingFile = "/media/archiv/md/berg/carbiocial/final_order_dates_l9_sres_a1b_2013-2040.dat";
+
+	time_t t = time(NULL);
+	char mbstr[100];
+	strftime(mbstr, sizeof(mbstr), "%Y-%m-%d", std::localtime(&t));
+    
+	string outputPath = string("../carbiocial-project/monica/run-local-example-outputs/") + mbstr + "/"; bool outputPathSet = false;
+	string inputPath = "../carbiocial-project/monica/run-local-example-inputs/"; bool inputPathSet = false;
+
+	if(argc == 2 || (argc > 1 && (argc-1) % 2 == 1))
+	{
+		cout << "usage: monica " << endl
+			<< "\t (in general type case can be ignored)" << endl
+			<< "\t -h or --help (get this help text)" << endl
+			<< "\t[" << endl
+			<< "\t| pathToIni: " << pathToIniFile << " (path to MONICA ini file)" << endl
+			<< "\t| startDate: " << startDate << " [yyyy-mm-dd]" << endl
+			<< "\t| endDate: " << endDate << " [yyyy-mm-dd]" << endl
+			//<< "\t| row: " << row << endl
+			//<< "\t| col: " << col << endl
+			<< "\t| profileId: " << profileId << endl
+			<< "\t| activateDebugOutput: " << (activateDebugOutput ? "true" : "false") << " [true | false] (should monica output debug information (on screen))" << endl
+			<< "\t| writeOutputFiles: " << (writeOutputFiles ? "true" : "false") << " [true | false] (should monica write output files (rmout, smout))" << endl
+			<< "\t| pathToClimateDataFile: " << pathToClimateDataFile <<  endl
+			<< "\t| pathToInputs: " << inputPath << " (path to input data, e.g. monica.ini)" <<  endl
+			<< "\t| pathToOutputs: " << outputPath << "path to output data, e.g. rmout, smout)" << endl
+			<< "\t]*" << endl;
+	}
+	else
+	{
+		for(int i = 1; i < argc; i+=2)
+		{
+			//cout << "argv[" << i << "] = |" << argv[i] 
+			//		<< "| argv[" << (i+1) << "] = |" << argv[i+1] << "|" << endl;
+			
+			if(toLower(string(argv[i])) == trim("pathtoinifile:"))
+			{
+				pathToIniFile = trim(argv[i+1]);
+				//iniFileSet = true;
+			}
+			else if(toLower(string(argv[i])) == trim("startdate:"))
+			{
+				startDate = trim(argv[i+1]);
+				startDateSet = true;
+			}
+			else if(toLower(string(argv[i])) == trim("enddate:"))
+			{
+				endDate = trim(argv[i+1]);
+				endDateSet = true;
+			}
+			//else if(toLower(string(argv[i])) == trim("row:"))
+			//{
+			//	row = stoi(argv[i+1]);
+			//	rowSet = true;
+			//}
+			//else if(toLower(string(argv[i])) == trim("col:"))
+			//{
+			//	col = stoi(argv[i+1]);
+			//	colSet = true;
+			//}
+			else if(toLower(string(argv[i])) == trim("profileid:"))
+			{
+				profileId = stoi(argv[i+1]);
+				profileIdSet = true;
+			}
+			else if(toLower(string(argv[i])) == trim("activatedebugoutput:"))
+			{
+				activateDebugOutput = stob(argv[i+1]);
+				activateDebugOutputSet = true;
+			}
+			else if(toLower(string(argv[i])) == trim("writeoutputfiles:"))
+			{
+				writeOutputFiles = stob(argv[i+1]);
+				writeOutputFilesSet = true;
+			}
+			else if(toLower(string(argv[i])) == trim("pathtoclimatedatafile:"))
+			{
+				pathToClimateDataFile = trim(argv[i+1]);
+				pathToClimateDataFileSet = true;
+			}
+			else if(toLower(string(argv[i])) == trim("pathtoinputs:"))
+			{
+				inputPath = trim(argv[i+1]);
+				inputPathSet = true;
+			}
+			else if(toLower(string(argv[i])) == trim("pathtooutputs:"))
+			{
+				outputPath = trim(argv[i+1]);
+				outputPathSet = true;
+			}
+		}
+	}
+	
+	IniParameterMap ipm(pathToIniFile);
+	if(!startDateSet)
+		startDate = ipm.value("carbiocial", "startDate", startDate);
+	if(!endDateSet)
+		endDate = ipm.value("carbiocial", "endDate", endDate);
+	//if(!rowSet)
+	//	row = ipm.valueAsInt("carbiocial", "row", row);
+	//if(!colSet)
+	//	col = ipm.valueAsInt("carbiocial", "col", col);
+	if(!profileIdSet)
+		profileId = ipm.valueAsInt("carbiocial", "profileId", profileId);
+	if(!activateDebugOutputSet)
+		activateDebugOutput = ipm.valueAsBool("carbiocial", "activateDebugOutput", activateDebugOutput);
+	if(!writeOutputFilesSet)
+		writeOutputFiles = ipm.valueAsBool("carbiocial", "writeOutputFiles", writeOutputFiles);
+	if(!pathToClimateDataFileSet)
+		pathToClimateDataFile = ipm.value("carbiocial", "pathToClimateDataFile", pathToClimateDataFile);
+	if(!inputPathSet)
+		inputPath = ipm.value("carbiocial", "inputPath", inputPath);
+	if(!outputPathSet)
+		outputPath = ipm.value("carbiocial", "outputPath", outputPath);
+	
+	cout << "starting monica with the following parameters:" << endl;
+	cout << "\t| pathToIniFile: " << pathToIniFile << endl
+			<< "\t| startDate: " << startDate << endl
+			 << "\t| endDate: " << endDate << endl
+			 //<< "\t| row: " << row << endl
+			 //<< "\t| col: " << col << endl
+			 << "\t| activateDebugOutput: " << (activateDebugOutput ? "true" : "false") << endl
+			 << "\t| writeOutputFiles: " << (writeOutputFiles ? "true" : "false") << endl
+			 << "\t| pathToClimateDataFile: " << pathToClimateDataFile << endl
+			 << "\t| pathToInputs: " << inputPath << endl
+			 << "\t| pathToOutputs: " << outputPath << endl;
+	
+	cc.setInputPath(inputPath);
+	cc.setPathToIniFile(pathToIniFile);
+	//cc.pathToClimateDataReorderingFile = pathToClimateDataReorderingFile;
+	//cc.create2013To2040ClimateData = true;
+	//cc.setCropName(crop);
+ 
+	cc.setStartDate(startDate);
+	cc.setEndDate(endDate);
+	cc.setClimateFile(pathToClimateDataFile);
+	//cc.setClimateFile(pathToCarbiocialData+"input_data/row-0/col-0.asc");
+	//cc.setRowId(row);
+	//cc.setColId(col);
+	cc.setProfileId(profileId);
+
+#ifdef WIN32
+	string mkdir = "mkdir ";
+#else
+	string mkdir = "mkdir -p ";
+#endif
+	system((mkdir + outputPath).c_str());
+	cc.setOutputPath(outputPath);
+
+	cc.writeOutputFiles = writeOutputFiles;
+	activateDebug = activateDebugOutput;
+	
+	cc.setLatitude(ipm.valueAsDouble("carbiocial", "latitude", -9.41));
+	cc.setElevation(ipm.valueAsDouble("carbiocial", "elevation", 300.0));
+		
+	auto year2yields = runCarbiocialSimulation(&cc);
+	cout << "results [year -> yield]: " << endl;
+	for(auto y2y : year2yields)
+		cout << y2y.first << " -> " << y2y.second << endl;
+	cout << endl;
+	
+	return 0;
+}
