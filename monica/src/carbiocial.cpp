@@ -583,11 +583,11 @@ int main(int argc, char** argv)
 	string pathToClimateDataFile = string("/media/archiv/md/berg/carbiocial/climate-data-years-1981-2012-rows-0-2544/") + "row-" + to_string(row) + "/col-" + to_string(col) + ".asc"; bool pathToClimateDataFileSet = false;
 	string pathToClimateDataReorderingFile = "/media/archiv/md/berg/carbiocial/final_order_dates_l9_sres_a1b_2013-2040.dat";
 
-	time_t t = time(NULL);
-	char mbstr[100];
-	strftime(mbstr, sizeof(mbstr), "%Y-%m-%d", std::localtime(&t));
+	//time_t t = time(NULL);
+	//char mbstr[100];
+	//strftime(mbstr, sizeof(mbstr), "%Y-%m-%d", std::localtime(&t));
     
-	string outputPath = string("../carbiocial-project/monica/run-local-example-outputs/") + mbstr + "/"; bool outputPathSet = false;
+	string outputPath = "../carbiocial-project/monica/run-local-example-outputs/"; bool outputPathSet = false; //+ mbstr + "/"; 
 	string inputPath = "../carbiocial-project/monica/run-local-example-inputs/"; bool inputPathSet = false;
 
 	if(argc == 2 || (argc > 1 && (argc-1) % 2 == 1))
@@ -608,6 +608,8 @@ int main(int argc, char** argv)
 			<< "\t| pathToInputs: " << inputPath << " (path to input data, e.g. monica.ini)" <<  endl
 			<< "\t| pathToOutputs: " << outputPath << "path to output data, e.g. rmout, smout)" << endl
 			<< "\t]*" << endl;
+			
+			return 0;
 	}
 	else
 	{
