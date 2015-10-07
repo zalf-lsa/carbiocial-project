@@ -596,7 +596,7 @@ int main(int argc, char** argv)
 			<< "\t (in general type case can be ignored)" << endl
 			<< "\t -h or --help (get this help text)" << endl
 			<< "\t[" << endl
-			<< "\t| pathToIni: " << pathToIniFile << " (path to MONICA ini file)" << endl
+			<< "\t| pathToIniFile: " << pathToIniFile << " (path to MONICA ini file)" << endl
 			<< "\t| startDate: " << startDate << " [yyyy-mm-dd]" << endl
 			<< "\t| endDate: " << endDate << " [yyyy-mm-dd]" << endl
 			//<< "\t| row: " << row << endl
@@ -606,7 +606,7 @@ int main(int argc, char** argv)
 			<< "\t| writeOutputFiles: " << (writeOutputFiles ? "true" : "false") << " [true | false] (should monica write output files (rmout, smout))" << endl
 			<< "\t| pathToClimateDataFile: " << pathToClimateDataFile <<  endl
 			<< "\t| pathToInputs: " << inputPath << " (path to input data, e.g. monica.ini)" <<  endl
-			<< "\t| pathToOutputs: " << outputPath << "path to output data, e.g. rmout, smout)" << endl
+			<< "\t| pathToOutputs: " << outputPath << " (path to output data, e.g. rmout, smout)" << endl
 			<< "\t]*" << endl;
 			
 			return 0;
