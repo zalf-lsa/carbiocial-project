@@ -459,13 +459,14 @@ Climate::DataAccessor Carbiocial::climateDataFromCarbiocialFiles(const std::stri
 		
 		//double tmin, tavg, tmax ,precip, globrad, relhumid, windspeed;
 		vector<double> d;
-		d.push_back(satof(r.at(4)));
-		d.push_back(satof(r.at(5)));
-		d.push_back(satof(r.at(6)));
-		d.push_back(satof(r.at(7)));
-		d.push_back(satof(r.at(8)));
-		d.push_back(satof(r.at(9)));
-		d.push_back(satof(r.at(10)));
+		
+		d.push_back(satof(r.at(4))); //tmin
+		d.push_back(satof(r.at(5))); //tavg
+		d.push_back(satof(r.at(6))); //tmax
+		d.push_back(satof(r.at(7))); //precip
+		d.push_back(satof(r.at(8))); //globrad
+		d.push_back(satof(r.at(9))); //relhumid
+		d.push_back(satof(r.at(10))); //windspeed
 
 		//cout << "[" << day << "." << month << "." << year << "] -> [";
 		//for(auto v : d)
@@ -477,7 +478,7 @@ Climate::DataAccessor Carbiocial::climateDataFromCarbiocialFiles(const std::stri
 	
 	cout << endl;
 
-	vector<double> tavgs, tmins, tmaxs, precips, globrads, relhumids, winds;
+	vector<double> tmins, tavgs, tmaxs, precips, globrads, relhumids, winds;
 
 	int daysAdded = 0;
 	for (Date d = startDate, ed = endDate; d <= ed; d++)
@@ -529,8 +530,8 @@ Climate::DataAccessor Carbiocial::climateDataFromCarbiocialFiles(const std::stri
       v = data[pd.year()][pd.month()][pd.day()];
 		}
 		
-		tavgs.push_back(v.at(0));
-		tmins.push_back(v.at(1));
+		tmins.push_back(v.at(0));
+		tavgs.push_back(v.at(1));
 		tmaxs.push_back(v.at(2));
 		precips.push_back(v.at(3));
 		globrads.push_back(v.at(4));
