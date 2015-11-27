@@ -1,25 +1,16 @@
-/**
-Authors: 
+/* This Source Code Form is subject to the terms of the Mozilla Public
+* License, v. 2.0. If a copy of the MPL was not distributed with this
+* file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/*
+Authors:
 Michael Berg <michael.berg@zalf.de>
 
-Maintainers: 
+Maintainers:
 Currently maintained by the authors.
 
-This file is part of the MONICA model. 
-Copyright (C) 2007-2013, Leibniz Centre for Agricultural Landscape Research (ZALF)
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
+This file is part of the MONICA model in the Carbiocial project.
+Copyright (C) Leibniz Centre for Agricultural Landscape Research (ZALF)
 */
 
 #include <map>
@@ -45,7 +36,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "core/simulation.h"
 #include "io/database-io.h"
 #include "io/hermes-file-io.h"
-#include "run/production-process.h"
+#include "run/cultivation-method.h"
 
 using namespace Db;
 using namespace std;
@@ -54,9 +45,12 @@ using namespace Monica;
 using namespace Tools;
 using namespace Soil;
 
-std::pair<const SoilPMs *, int>
-Carbiocial::carbiocialSoilParameters(int profileId, int layerThicknessCm,
-int maxDepthCm, GeneralParameters gps, string output_path, CentralParameterProvider centralParameterProvider)
+SoilPMsPtr
+Carbiocial::carbiocialSoilParameters(int profileId, 
+																		 int layerThicknessCm,
+																		 int maxDepthCm, 
+																		 string output_path, 
+																		 CentralParameterProvider centralParameterProvider)
 {
 	//cout << "getting soilparameters for STR: " << str << endl;
 	int maxNoOfLayers = int(double(maxDepthCm) / double(layerThicknessCm));
@@ -67,10 +61,8 @@ int maxDepthCm, GeneralParameters gps, string output_path, CentralParameterProvi
 	typedef int SoilClassId;
 
 	typedef map<ProfileId, SoilPMsPtr> Map;
-	typedef map<ProfileId, SoilClassId> PId2SCId;
 	static bool initialized = false;
 	static Map spss;
-	static PId2SCId profileId2soilClassId;
 
 	if (!initialized)
 	{
@@ -82,7 +74,10 @@ int maxDepthCm, GeneralParameters gps, string output_path, CentralParameterProvi
 			DBRow row;
 
 			ostringstream s;
-			s << "select id, count(horizon_id) "
+			s << 
+				"select "
+				"id, "
+				"count(horizon_id) "
 				"from soil_profile_data "
 				"where id not null "
 				"group by id";
@@ -94,10 +89,20 @@ int maxDepthCm, GeneralParameters gps, string output_path, CentralParameterProvi
 			con->freeResultSet();
 
 			ostringstream s2;
-			s2 << "select id, horizon_id, soil_class_id, "
-				"upper_horizon_cm, lower_horizon_cm, "
-				"silt_percent, clay_percent, sand_percent, "
-				"ph_kcl, c_org_percent, c_n, bulk_density_t_per_m3 "
+			s2 << 
+				"select "
+				"id, "
+				"horizon_id, "
+				"soil_class_id, "
+				"upper_horizon_cm, "
+				"lower_horizon_cm, "
+				"silt_percent, "
+				"clay_percent, "
+				"sand_percent, "
+				"ph_kcl, "
+				"c_org_percent, "
+				"c_n, "
+				"bulk_density_t_per_m3 "
 				"from soil_profile_data "
 				"where id not null "
 				"order by id, horizon_id";
@@ -107,15 +112,11 @@ int maxDepthCm, GeneralParameters gps, string output_path, CentralParameterProvi
 			{
 				ProfileId id = ProfileId(satoi(row[0]));
 
-				//SoilClassId soilClassId = SoilClassId(satoi(row[2]));
-				//if (profileId2soilClassId.find(id) == profileId2soilClassId.end())
-				//	profileId2soilClassId[id] = soilClassId;
-
 				Map::iterator spsi = spss.find(id);
 				SoilPMsPtr sps;
 
 				if (spsi == spss.end())
-					spss.insert(make_pair(id, sps = SoilPMsPtr(new SoilPMs)));
+					spss.insert(make_pair(id, sps = make_shared<SoilPMs>()));
 				else
 					sps = spsi->second;
 
@@ -158,7 +159,7 @@ int maxDepthCm, GeneralParameters gps, string output_path, CentralParameterProvi
 		}
 	}
 
-	static SoilPMs nothing;
+	static SoilPMsPtr nothing = make_shared<SoilPMs>();
 	Map::const_iterator ci = spss.find(profileId);
 
 	if(activateDebug)
@@ -192,8 +193,7 @@ int maxDepthCm, GeneralParameters gps, string output_path, CentralParameterProvi
 		}
 		file.close();
 	}
-	return ci != spss.end() ? make_pair(ci->second.get(), -1)//profileId2soilClassId[profileId])
-		: make_pair(&nothing, -1);
+	return ci != spss.end() ? ci->second : nothing;
 }
 
 
@@ -204,7 +204,8 @@ int maxDepthCm, GeneralParameters gps, string output_path, CentralParameterProvi
 *
 * @param simulation_config Configuration object that stores all simulation information
 */
-std::map<int, double> Carbiocial::runCarbiocialSimulation(const CarbiocialConfiguration* simulation_config)
+std::map<int, double> 
+Carbiocial::runCarbiocialSimulation(const CarbiocialConfiguration* simulation_config)
 {
 	//std::cout << "Start Carbiocial cluster Simulation" << std::endl;
 	std::string input_path = simulation_config->getInputPath();
@@ -252,65 +253,52 @@ std::map<int, double> Carbiocial::runCarbiocialSimulation(const CarbiocialConfig
 	// initial values
 	double init_FC = ipm.valueAsDouble("init_values", "init_percentage_FC", -1.0);
 
-	//  std::cout << "init_FC: " << init_FC << endl;
-	// ---------------------------------------------------------------------
-
-	CentralParameterProvider centralParameterProvider = readUserParameterFromDatabase();
-	centralParameterProvider.userEnvironmentParameters.p_AthmosphericCO2 = atmospheric_CO2;
-	centralParameterProvider.userEnvironmentParameters.p_WindSpeedHeight = wind_speed_height;
-	centralParameterProvider.userEnvironmentParameters.p_LeachingDepth = leaching_depth;
-	centralParameterProvider.userInitValues.p_initPercentageFC = init_FC;
-
+	CentralParameterProvider cpp = readUserParameterFromDatabase();
+	cpp.userEnvironmentParameters.p_AtmosphericCO2 = atmospheric_CO2;
+	cpp.userEnvironmentParameters.p_WindSpeedHeight = wind_speed_height;
+	cpp.userEnvironmentParameters.p_LeachingDepth = leaching_depth;
+	
 	SiteParameters siteParams;
 	siteParams.vs_Latitude = simulation_config->getLatitude();
 	siteParams.vs_Slope = 0.01;
 	siteParams.vs_HeightNN = simulation_config->getElevation();
 	siteParams.vs_Soil_CN_Ratio = CN_ratio; // TODO: xeh CN_Ratio aus Bodendatei auslesen
 
-	//cout << "Site parameters " << endl;
-	//cout << siteParams.toString().c_str() << endl;
-
-	double layer_thickness = centralParameterProvider.userEnvironmentParameters.p_LayerThickness;
-	double profile_depth = layer_thickness * double(centralParameterProvider.userEnvironmentParameters.p_NumberOfLayers);
+	double layer_thickness = cpp.simulationParameters.p_LayerThickness;
+	double profile_depth = layer_thickness * double(cpp.simulationParameters.p_NumberOfLayers);
 	double max_mineralisation_depth = 0.4;
 
-	GeneralParameters gps = GeneralParameters(layer_thickness);
-	gps.ps_ProfileDepth = profile_depth;
-	gps.ps_MaxMineralisationDepth = max_mineralisation_depth;
-	gps.pc_NitrogenResponseOn = n_response;
-	gps.pc_WaterDeficitResponseOn = water_deficit_response;
-	gps.pc_EmergenceFloodingControlOn = emergence_flooding_control;
-	gps.pc_EmergenceMoistureControlOn = emergence_moisture_control;
+	cpp.userSoilOrganicParameters.ps_MaxMineralisationDepth = max_mineralisation_depth;
+	cpp.simulationParameters.pc_NitrogenResponseOn = n_response;
+	cpp.simulationParameters.pc_WaterDeficitResponseOn = water_deficit_response;
+	cpp.simulationParameters.pc_EmergenceFloodingControlOn = emergence_flooding_control;
+	cpp.simulationParameters.pc_EmergenceMoistureControlOn = emergence_moisture_control;
 
-	//soil data
-	const SoilPMs* sps;
-
-	//  std::string project_id = simulation_config->getProjectId();
-	//  std::string lookup_project_id = simulation_config->getLookupProjectId();
-
-	pair<const SoilPMs*, int> p =
+	siteParams.vs_SoilParameters =
 		Carbiocial::carbiocialSoilParameters(simulation_config->getProfileId(),
-		int(layer_thickness * 100), int(profile_depth * 100), 
-		 gps, output_path, centralParameterProvider);
-	sps = p.first;
+																				 int(layer_thickness * 100),
+																				 int(profile_depth * 100),
+																				 output_path,
+																				 cpp);
 
 	//no soil available, return no yields
-	if (sps->empty())
+	if (siteParams.vs_SoilParameters->empty())
 		return std::map<int, double>();
-
-	//	sps = soilParametersFromCarbiocialFile(soil_file, gps, ph);
 
 	//cout << "Groundwater min:\t" << centralParameterProvider.userEnvironmentParameters.p_MinGroundwaterDepth << endl;
 	//cout << "Groundwater max:\t" << centralParameterProvider.userEnvironmentParameters.p_MaxGroundwaterDepth << endl;
 	//cout << "Groundwater month:\t" << centralParameterProvider.userEnvironmentParameters.p_MinGroundwaterDepthMonth << endl;
 
 	// climate data
-	Climate::DataAccessor climateData = climateDataFromCarbiocialFiles(simulation_config->getClimateFile(), centralParameterProvider, 
-	latitude, simulation_config);
+	Climate::DataAccessor climateData = 
+		climateDataFromCarbiocialFiles(simulation_config->getClimateFile(), 
+																	 cpp,
+																	 latitude, 
+																	 simulation_config);
 	//cout << "Return from climateDataFromMacsurFiles" << endl;
 
 	// fruchtfolge
-	vector<ProductionProcess> ff = cropRotationFromHermesFile(input_path + crop_rotation_file);
+	auto ff = cropRotationFromHermesFile(input_path + crop_rotation_file);
 	//cout << "Return from cropRotationFromHermesFile" << endl;
 	
 	// fertilisation
@@ -320,12 +308,12 @@ std::map<int, double> Carbiocial::runCarbiocialSimulation(const CarbiocialConfig
 	//    cout << "pv: " << pv.toString() << endl;
 	
 	//build up the monica environment
-	Env env(sps, centralParameterProvider);
-	env.general = gps;
-	env.pathToOutputDir = output_path;
+	Env env(cpp);
+	env.params.writeOutputFiles = simulation_config->writeOutputFiles;
+	env.params.pathToOutputDir = output_path;
 	env.setMode(MODE_CARBIOCIAL_CLUSTER);
-	env.site = siteParams;
-	env.writeOutputFiles = simulation_config->writeOutputFiles;
+	//env.params.groundwaterInformation = gw_infos;
+	env.params.siteParameters = siteParams;
 
 	env.da = climateData;
 	env.cropRotation = ff;
@@ -342,8 +330,9 @@ std::map<int, double> Carbiocial::runCarbiocialSimulation(const CarbiocialConfig
 		//  std::cout << "nitrate: " << nitrate << endl;
 		//  std::cout << "sulfate: " << sulfate << endl << endl;
 
-		env.useAutomaticIrrigation = true;
-		env.autoIrrigationParams = AutomaticIrrigationParameters(amount, treshold, nitrate, sulfate);
+		env.params.simulationParameters.p_UseAutomaticIrrigation = true;
+		env.params.simulationParameters.p_AutoIrrigationParams = 
+			AutomaticIrrigationParameters(amount, treshold, nitrate, sulfate);
 	}
 	//cout << env.toString() << endl;
 	//cout << "Before runMonica" << endl;
@@ -355,7 +344,7 @@ std::map<int, double> Carbiocial::runCarbiocialSimulation(const CarbiocialConfig
 	for (int i = 0, size = res.pvrs.size(); i < size; i++)
 	{
 		int year = ey - size + 1 + i;
-		double yield = res.pvrs[i].pvResults[primaryYieldTM] / 10.0;
+		double yield = res.pvrs[i].results[primaryYieldTM] / 10.0;
 		debug() << "year: " << year << " yield: " << yield << " tTM" << endl;
 		year2yield[year] = Tools::round(yield, 3);
 	}
@@ -559,6 +548,7 @@ Climate::DataAccessor Carbiocial::climateDataFromCarbiocialFiles(const std::stri
 	return da;
 }
 
+//*
 int main(int argc, char** argv)
 {
 	setlocale(LC_ALL, "");
@@ -747,3 +737,4 @@ int main(int argc, char** argv)
 	
 	return 0;
 }
+//*/
