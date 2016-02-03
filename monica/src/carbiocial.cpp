@@ -123,7 +123,7 @@ Carbiocial::carbiocialSoilParameters(int profileId,
 				int hcount = id2layerCount[int(id)];
 				int currenth = satoi(row[1]);
 
-				int ho = sps->size()*layerThicknessCm;
+				int ho = int(sps->size())*layerThicknessCm;
 				int hu = satoi(row[4]) ? satoi(row[4]) : maxDepthCm;
 				int hsize = max(0, hu - ho);
 				int subhcount = Tools::roundRT<int>(double(hsize) / double(layerThicknessCm), 0);
@@ -211,6 +211,11 @@ Carbiocial::runCarbiocialSimulation(const CarbiocialConfiguration* simulation_co
 	std::string input_path = simulation_config->getInputPath();
 	std::string output_path = simulation_config->getOutputPath();
 
+	//cout
+	//<< "input_path: " << input_path << endl
+	//<< "output_path: " << output_path << endl
+	//<< "pathToIniFile: " << simulation_config->getPathToIniFile() << endl;
+
 	// read in ini - file ------------------------------------------
 	IniParameterMap ipm(simulation_config->getPathToIniFile());
 
@@ -218,8 +223,8 @@ Carbiocial::runCarbiocialSimulation(const CarbiocialConfiguration* simulation_co
 	std::string fertilisation_file = ipm.value("files", "fertiliser");
 
 	//std::cout << "soil_file: " << soil_file.c_str() << "\t" << ipm.value("files", "soil").c_str() << endl;
-	//std::cout << "crop_rotation_file: " << crop_rotation_file.c_str() << endl;
-	//std::cout << "fertilisation_file: " << fertilisation_file.c_str() << endl << endl;
+	std::cout << "crop_rotation_file: " << crop_rotation_file.c_str() << endl;
+	std::cout << "fertilisation_file: " << fertilisation_file.c_str() << endl << endl;
 
 	//site configuration
 	double latitude = ipm.valueAsDouble("site_parameters", "latitude", -1.0);
@@ -548,7 +553,7 @@ Climate::DataAccessor Carbiocial::climateDataFromCarbiocialFiles(const std::stri
 	return da;
 }
 
-//*
+/*
 int main(int argc, char** argv)
 {
 	setlocale(LC_ALL, "");
