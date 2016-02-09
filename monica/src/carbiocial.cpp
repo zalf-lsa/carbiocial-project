@@ -314,8 +314,8 @@ Carbiocial::runCarbiocialSimulation(const CarbiocialConfiguration* simulation_co
 	
 	//build up the monica environment
 	Env env(cpp);
-	env.params.writeOutputFiles = simulation_config->writeOutputFiles;
-	env.params.pathToOutputDir = output_path;
+	env.params.setWriteOutputFiles(simulation_config->writeOutputFiles);
+	env.params.setPathToOutputDir(output_path);
 	env.setMode(MODE_CARBIOCIAL_CLUSTER);
 	//env.params.groundwaterInformation = gw_infos;
 	env.params.siteParameters = siteParams;
