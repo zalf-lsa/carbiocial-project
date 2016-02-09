@@ -34,37 +34,42 @@ namespace Carbiocial
 	class CarbiocialConfiguration
 	{
 	public:
-		CarbiocialConfiguration() {}
-		~CarbiocialConfiguration() {}
+		std::string getClimateFile() const  { return climate_file; }
+		void setClimateFile(std::string climate_file) { this->climate_file = climate_file; }
+
+		std::string getPathToIniFile() const { return pathToIniFile; }
+		void setPathToIniFile(std::string pathToIniFile) { this->pathToIniFile = pathToIniFile; }
+
+		std::string getInputPath() const { return input_path; }
+		void setInputPath(std::string path) { this->input_path = path; }
+
+		std::string getOutputPath() const { return output_path; }
+		void setOutputPath(std::string path) { this->output_path = path; }
+
+		Tools::Date getStartDate() const { return start_date; }
+		void setStartDate(std::string date) { this->start_date = Tools::fromMysqlString(date.c_str()); }
+
+		Tools::Date getEndDate() const { return end_date; }
+		void setEndDate(std::string date) { this->end_date = Tools::fromMysqlString(date.c_str()); }
+
+		int getRowId() const { return row_id; }
+		void setRowId(int row_id) { this->row_id = row_id; }
+
+		int getColId() const { return col_id; }
+		void setColId(int col_id) { this->col_id = col_id; }
+
+		double getLatitude() const { return latitude; }
+		void setLatitude(double lat) { this->latitude = lat; }
+
+		double getElevation() const { return elevation; }
+		void setElevation(double ele) { this->elevation = ele; }
+
+		int getProfileId() const { return profileId; }
+		void setProfileId(int pid) { profileId = pid; }
 
 		bool writeOutputFiles{false};
 		bool create2013To2040ClimateData{false};
 		std::string pathToClimateDataReorderingFile;
-
-		std::string getClimateFile() const  { return climate_file; }
-		std::string getPathToIniFile() const { return pathToIniFile; }
-		std::string getInputPath() const { return input_path; }
-		std::string getOutputPath() const { return output_path; }
-		Tools::Date getStartDate() const { return start_date; }
-		Tools::Date getEndDate() const { return end_date; }
-		int getRowId() const { return row_id; }
-		int getColId() const { return col_id; }
-		double getLatitude() const { return latitude; }
-		double getElevation() const { return elevation; }
-		int getProfileId() const { return profileId; }
-
-		void setClimateFile(std::string climate_file) { this->climate_file = climate_file; }
-		//void setIniFile(std::string ini_file) { this->ini_file = ini_file; }
-		void setPathToIniFile(std::string pathToIniFile) { this->pathToIniFile = pathToIniFile; }
-		void setInputPath(std::string path) { this->input_path = path; }
-		void setOutputPath(std::string path) { this->output_path = path; }
-		void setStartDate(std::string date) { this->start_date = Tools::fromMysqlString(date.c_str()); }
-		void setEndDate(std::string date) { this->end_date = Tools::fromMysqlString(date.c_str()); }
-		void setRowId(int row_id) { this->row_id = row_id; }
-		void setColId(int col_id) { this->col_id = col_id; }
-		void setLatitude(double lat) { this->latitude = lat; }
-		void setElevation(double ele) { this->elevation = ele; }
-		void setProfileId(int pid) { profileId = pid; }
 
 	private:
 		std::string climate_file;
