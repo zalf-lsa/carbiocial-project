@@ -2,20 +2,15 @@
 # -*- coding: ISO-8859-15-*-
 
 import sys
-
-sys.path.append('.')	 # path to monica.py
-
-import mpi_helper
-import monica
+sys.path.append('.')   # path to monica.pyimport monica_py
+import monica_py
 import os
 import datetime
-import numpy
-import analyse_monica_outputs
 import shutil
 import time
-
 import csv
 from mpi4py import MPI
+import json
 
 # MPI related initialisations
 comm = MPI.COMM_WORLD
@@ -26,14 +21,18 @@ name = MPI.Get_processor_name()
 #pathToCarbiocialData = "/media/san1_data1/data1/berg/carbiocial/macsur_scaling/"
 #pathToClimateData = "/media/archiv/md/berg/carbiocial/climate-data-out-0-2544/"
 
-pathToCarbiocialData = "installer/Hohenfinow2/"
-pathToClimateData = "installer/Hohenfinow2/"
+pathToJSONInputsFiles = "installer/Hohenfinow2/"
+pathToProfileIdGrid = "/home/mib/development/github/zalf-lsa/carbiocial-project/monica/solos-profile-ids_brazil_900.asc"
+pathToClimateData = "/home/mib/archiv-berg/carbiocial/climate-data-years-1981-2012-rows-0-2544/"
+pathToOutputDir = "./"
 
 sep = ","
 remove_monica_files_after_simulation = False	# True
 
-startDate = "1981-01-01"
-endDate = "2012-12-31"
+#startDate = "1981-01-01"
+#endDate = "2012-12-31"
+startDate = "1991-01-01"
+endDate = "1997-12-31"
 
 asciiGridHeaders = []
 noOfGridRows = 2545
@@ -46,28 +45,30 @@ main routine of the carbiocial cluster simulation
 """
 def main():
 	ts = time.time()
-	output_path = pathToCarbiocialData + "runs/" + datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d_%H-%M') + "/"
+	output_path = pathToOutputDir + "runs/" + datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d_%H-%M') + "/"
 
 	print "processor #", rank
-	input_path = pathToCarbiocialData + "input_data/"
 
 	splittedGridDataMap = None
 
-	sim_fp = open(input_path + "sim.json")
-	sim = json.load(sim_fp)
-	sim_fp.close()
+	with open(pathToJSONInputsFiles + "sim.json") as f:
+		sim = json.load(f)
 
-	site_fp = open(input_path + "site-soil-profile-from-db.json")
-	site = json.load(site_fp)
-	site_fp.close()
+	sim["start-date"] = startDate
+	sim["end-date"] = endDate
+	sim["no-of-climate-file-header-lines"] = 1
+	sim["debug?"] = True
+	sim["write-output-files?"] = True
 
-	crop_fp = open(input_path + "crop.json")
-	crop = json.load(crop_fp)
-	crop_fp.close()
+	with open(pathToJSONInputsFiles + "site-soil-profile-from-db.json") as f:
+		site = json.load(f)
+
+	with open(pathToJSONInputsFiles + "crop.json") as f:
+		crop = json.load(f)
 
 	if (rank == 0):
 		# only one processor reads in the meta information
-		splittedGridDataMap = splitAsciiGrid(pathToCarbiocialData + "input_data/solos-profile-ids_brazil_900.asc", size)
+		splittedGridDataMap = splitAsciiGrid(pathToProfileIdGrid, size)
 
 	###################################################
 	# parallel part
@@ -85,24 +86,21 @@ def main():
 	index = 0
 	for coord, profileId in nodeSpecificDataMap.iteritems():
 		row, col = coord
-		#row, col = (86, 820)
 
 		site["SiteParameters"]["SoilProfileParameters"][1]["id"] = profileId
-
-		d = {
-			"path-to-climate-csv" : pathToClimateData + "row-" + str(row) + "/col-" + str(col) + ".asc",
-			"sim-json-str" : json.dumps(sim),
-			"site-json-str" : json.dumps(site),
-			"crop-json-str" : json.dumps(crop),
-			"path-to-output" : output_path + "row-" + str(row) + "/col-" + str(col) + "/"
-		}
+		sim["climate.csv"] = pathToClimateFile = pathToClimateData + "row-" + str(row) + "/col-" + str(col) + ".asc"
+		sim["path-to-output"] = output_path + "row-" + str(row) + "/col-" + str(col) + "/"
 
 		print rank, "###################################"
-		print rank, "coord: ", coord, " profileId: ", monica_simulation_config.getProfileId()
+		print rank, "coord (row, col): ", coord, " profileId: ", profileId
 		print rank, "startDate: ", startDate, " endDate: ", endDate
-		print rank, "climateFile: ", monica_simulation_config.getClimateFile()
+		print rank, "climateFile: ", sim["climate.csv"]
 
-		year2yield = monica_py.runMonica(d)
+		year2yield = monica_py.runMonica({
+			"sim-json-str" : json.dumps(sim),
+			"site-json-str" : json.dumps(site),
+			"crop-json-str" : json.dumps(crop)
+		})
 
 		if len(year2yield) > 0:
 			coord2year2yield[(row, col)] = year2yield
